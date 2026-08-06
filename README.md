@@ -1,142 +1,43 @@
-# Flex Connect
+# Flex Connect — Static GitHub Pages Edition
 
-Flex Connect is a membership, access control, visit reporting, subscription,
-and point-of-sale dashboard. The full application runs on a server-backed
-deployment, and a dedicated static frontend can be published on GitHub Pages.
+This folder is the complete website. It uses plain HTML, CSS, and JavaScript.
+There is no backend, build command, package installation, workflow, database,
+IndexedDB, localStorage, sessionStorage, service worker, or browser cache used
+for business data.
 
-## GitHub Pages
+## Publish
 
-GitHub Pages hosts static files, so the included Pages build contains the
-dashboard interface while Stripe secrets, webhooks, membership data, and the
-database remain on a separately deployed backend.
+Put `index.html`, `styles.css`, and `app.js` at the root of any static host or
+GitHub Pages repository. No custom build action, repository variable, base-path
+setting, or server is required. All asset links are relative, so both account
+pages and project pages work unchanged.
 
-1. Push this project to a GitHub repository with `main` as the default branch.
-2. In **Settings → Pages**, choose **GitHub Actions** as the source.
-3. Deploy the full backend on a public HTTPS origin.
-4. Add a repository variable named `FLEX_API_BASE_URL` containing that backend
-   origin, such as `https://api.example.com`. You can also enter the backend URL
-   from the dashboard's Settings page after deployment.
-5. Set `ADMIN_API_TOKEN` on the backend and enter the same value in the Pages
-   dashboard's Settings page. Never put Stripe secret keys in a GitHub Pages
-   variable or in browser code.
+## First launch
 
-The workflow at `.github/workflows/deploy-pages.yml` builds and publishes the
-site automatically on pushes to `main`. To verify the static build locally:
+Open the page in current desktop Chrome or Edge and select **Choose storage
+folder**. The browser asks for permission, then Flex Connect creates or opens
+`flex-connect-data.json` in that folder. Every member, plan, visit, sale,
+product, device setting, and report change is written directly to that file.
 
-```bash
-npm ci
-npm run build:pages
-```
+The folder must be selected again after reopening the page. Flex Connect does
+this intentionally because remembering a directory handle would require a
+browser database, which this edition never uses.
 
-The static output is written to `dist-pages/`. Browser-supported Bluetooth and
-NFC connections run locally in the dashboard; server-mediated Wi-Fi devices,
-Stripe, and database features use the configured backend.
+## Stripe
 
-## Full application
+Create a Stripe Payment Link for each recurring product in Stripe, then paste
+the link into the corresponding membership option. Signup opens Stripe's
+secure hosted checkout. Card details and secret Stripe keys never enter this
+website. After payment, use the member's **Payment** action to activate the
+member and add the payment to local revenue and tax reports.
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+## Hardware
 
-## Prerequisites
+- Web NFC: Android Chrome on a device with NFC.
+- External NFC: USB/serial readers through Web Serial, keyboard-mode readers,
+  or a secure WebSocket reader.
+- Door control: Web Bluetooth LE or an HTTPS Wi-Fi controller that permits the
+  page origin. Configure commands, URLs, and Bluetooth UUIDs under Settings.
 
-- Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
-
-## Sites Lifecycle
-
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
-
-This starter does not use `wrangler.jsonc`.
-
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout and then validates the Sites artifact. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
-
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
-
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Diagnostic Commands
-
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build and validate the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build, validate, and verify the rendered development-preview metadata
-- `npm run validate:artifact`: recheck an existing artifact's manifest and ESM `default.fetch` export
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-Use build and validation commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
-
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+Hardware permission prompts appear only when the operator presses the related
+connect, scan, or write button.
