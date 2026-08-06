@@ -1,7 +1,11 @@
 export async function runtimeValue(key: string) {
-  const { env } = await import("cloudflare:workers");
-  const values = env as unknown as Record<string, string | undefined>;
-  return values[key]?.trim() || "";
+  try {
+    const { env } = await import("cloudflare:workers");
+    const values = env as unknown as Record<string, string | undefined>;
+    return values[key]?.trim() || "";
+  } catch {
+    return process.env[key]?.trim() || "";
+  }
 }
 
 export function jsonError(message: string, status = 400) {

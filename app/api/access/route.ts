@@ -1,5 +1,4 @@
 import { ensureDatabase, getD1 } from "../../../db";
-import { operateDoor } from "../../../lib/door";
 import { jsonError, requestJson } from "../../../lib/runtime";
 import { requireAdminApi } from "../../../lib/admin";
 
@@ -26,6 +25,5 @@ export async function POST(request: Request) {
     .bind(id, member.id, body.method || "nfc", approved ? "approved" : "denied", reason || null).run();
   if (!approved) return Response.json({ approved, reason, member }, { status: 403 });
   await getD1().prepare("UPDATE members SET last_visit_at=CURRENT_TIMESTAMP WHERE id=?").bind(member.id).run();
-  const door = await operateDoor("open", String(member.id));
-  return Response.json({ approved, member, visitId: id, door });
+  return Response.json({ approved, member, visitId: id });
 }

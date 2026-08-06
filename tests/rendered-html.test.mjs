@@ -11,7 +11,10 @@ test("renders development preview metadata", async () => {
 
   const response = await worker.fetch(
     new Request("http://localhost/", {
-      headers: { accept: "text/html" },
+      headers: {
+        accept: "text/html",
+        "oai-authenticated-user-email": "preview-owner@example.com",
+      },
     }),
     {
       ASSETS: {
