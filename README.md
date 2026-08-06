@@ -41,3 +41,11 @@ member and add the payment to local revenue and tax reports.
 
 Hardware permission prompts appear only when the operator presses the related
 connect, scan, or write button.
+
+## Visual website editor
+
+Open **Edit Website** and paste a fine-grained GitHub personal access token
+with Metadata read and Contents read/write permission for the selected website
+repositories. Choose a repository, branch, and HTML page, then edit its text,
+images, buttons, and links using visual controls. Publishing creates one GitHub
+commit. The token stays only in the current page's memory and is never saved.

@@ -8,7 +8,7 @@
   const view = $("#view");
   const modal = $("#modal");
   const modalBody = $("#modalBody");
-  const titles = { overview: "Overview", members: "Members", plans: "Memberships", reports: "Visits & Reports", access: "Access & NFC", pos: "Clothing POS", signup: "Public Signup", settings: "Settings" };
+  const titles = { overview: "Overview", members: "Members", plans: "Memberships", reports: "Visits & Reports", access: "Access & NFC", pos: "Clothing POS", signup: "Public Signup", website: "Edit Website", settings: "Settings" };
   const freshData = () => ({
     version: 1,
     updatedAt: new Date().toISOString(),
@@ -17,7 +17,8 @@
       door: { type: "none", wifiUrl: "", unlockPath: "/unlock", lockPath: "/lock", method: "POST", token: "", serviceUuid: "", characteristicUuid: "", unlockCommand: "unlock", lockCommand: "lock" },
       nfc: { wsUrl: "", serialBaud: 9600, tagPrefix: "flex:" }
     },
-    plans: [], members: [], visits: [], products: [], sales: []
+    plans: [], members: [], visits: [], products: [], sales: [],
+    website: { repo: "", branch: "", path: "" }
   });
 
   let data = freshData();
@@ -33,6 +34,8 @@
   let nfcSocket = null;
   let serialPort = null;
   let toastTimer = null;
+  let githubToken = "";
+  const web = { user: null, repos: [], branches: [], files: [], doc: null, parts: { text: [], image: [], button: [] }, images: [], tab: "text", busy: "", message: "", commitUrl: "", timer: null };
 
   const id = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const esc = value => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
@@ -51,7 +54,8 @@
       ...base, ...incoming,
       settings: { ...base.settings, ...settings, door: { ...base.settings.door, ...(settings.door || {}) }, nfc: { ...base.settings.nfc, ...(settings.nfc || {}) } },
       plans: Array.isArray(incoming.plans) ? incoming.plans : [], members: Array.isArray(incoming.members) ? incoming.members : [],
-      visits: Array.isArray(incoming.visits) ? incoming.visits : [], products: Array.isArray(incoming.products) ? incoming.products : [], sales: Array.isArray(incoming.sales) ? incoming.sales : []
+      visits: Array.isArray(incoming.visits) ? incoming.visits : [], products: Array.isArray(incoming.products) ? incoming.products : [], sales: Array.isArray(incoming.sales) ? incoming.sales : [],
+      website: { ...base.website, ...(incoming.website && typeof incoming.website === "object" ? incoming.website : {}) }
     };
   }
 
@@ -151,7 +155,7 @@
     $("#pageTitle").textContent = titles[currentView];
     $("#breadcrumb").textContent = `FLEX CONNECT / ${titles[currentView].toUpperCase()}`;
     $("#memberCount").textContent = data.members.length;
-    ({ overview: renderOverview, members: renderMembers, plans: renderPlans, reports: renderReports, access: renderAccess, pos: renderPos, signup: renderSignup, settings: renderSettings })[currentView]();
+    ({ overview: renderOverview, members: renderMembers, plans: renderPlans, reports: renderReports, access: renderAccess, pos: renderPos, signup: renderSignup, website: renderWebsite, settings: renderSettings })[currentView]();
   }
 
   function toolbar(title, text, actions = "") {
@@ -258,6 +262,155 @@
       event.currentTarget.reset();
       render();
     });
+  }
+
+  const repoPath = name => String(name || "").split("/").map(encodeURIComponent).join("/");
+
+  async function gh(path, options = {}) {
+    if (!githubToken) throw new Error("Connect GitHub first.");
+    const response = await fetch(`https://api.github.com${path}`, { ...options, headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${githubToken}`, "X-GitHub-Api-Version": "2026-03-10", "Content-Type": "application/json", ...(options.headers || {}) } });
+    if (response.status === 204) return null;
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 401) throw new Error("The GitHub key was not accepted.");
+      if (response.status === 403) throw new Error("GitHub refused this action. Check the key's repository and Contents permissions.");
+      if (response.status === 409) throw new Error("The branch changed while publishing. Reload the page and try again.");
+      if (response.status === 422) throw new Error("GitHub could not publish to this branch. It may be protected.");
+      throw new Error(result.message || `GitHub returned ${response.status}.`);
+    }
+    return result;
+  }
+
+  async function ghPages(path) {
+    const result = [];
+    for (let page = 1; page <= 10; page++) {
+      const rows = await gh(`${path}${path.includes("?") ? "&" : "?"}per_page=100&page=${page}`);
+      if (!Array.isArray(rows)) break;
+      result.push(...rows);
+      if (rows.length < 100) break;
+    }
+    return result;
+  }
+
+  function clearWebDoc() {
+    web.images.forEach(item => URL.revokeObjectURL(item.url));
+    web.doc = null; web.parts = { text: [], image: [], button: [] }; web.images = []; web.commitUrl = "";
+  }
+
+  function selectedRepo() { return web.repos.find(repo => repo.full_name === data.website.repo); }
+
+  function renderWebsite() {
+    const connected = Boolean(githubToken && web.user);
+    const connect = connected ? `<article class="panel gh-connect connected"><div class="gh-user"><b>GH</b><div><small>CONNECTED FOR THIS SESSION</small><h3>${esc(web.user.name || web.user.login)}</h3><p>${esc(web.user.login)} · key is not saved</p></div></div><div class="button-row"><button class="secondary" data-action="gh-refresh">Refresh repositories</button><button class="danger" data-action="gh-disconnect">Disconnect & clear key</button></div></article>` : `<article class="panel gh-connect"><div><p class="step">STEP 1 OF 4</p><h3>Connect your GitHub website</h3><p>Use a fine-grained personal access token with access only to the websites you want to edit. It needs <strong>Metadata: read</strong> and <strong>Contents: read and write</strong>.</p></div><form id="ghForm" class="gh-form"><label>GitHub key<input name="token" type="password" required autocomplete="off" placeholder="github_pat_••••••••"></label><button class="primary" ${web.busy ? "disabled" : ""}>${esc(web.busy || "Connect GitHub")}</button></form><div class="safe-note"><b>✓</b><p><strong>Session-only security.</strong> The key stays in memory and is cleared when this page closes. It is never written to the Flex Connect data file. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained key</a>.</p></div></article>`;
+    const choose = connected ? `<article class="panel web-source"><div class="web-head"><div><p class="step">STEP 2 OF 4</p><h3>Choose the website to edit</h3><p>Select the repository, publishing branch, and HTML page. Flex Connect finds its text, images, buttons, and links automatically.</p></div>${web.busy ? `<span class="chip">${esc(web.busy)}</span>` : ""}</div><div class="web-selects"><label>Website repository<select id="webRepo" ${web.busy ? "disabled" : ""}><option value="">Choose a repository</option>${web.repos.map(repo => `<option value="${esc(repo.full_name)}" ${data.website.repo === repo.full_name ? "selected" : ""}>${esc(repo.full_name)}${repo.private ? " · private" : ""}${repo.permissions?.push === false ? " · view only" : ""}</option>`).join("")}</select></label><label>Publishing branch<select id="webBranch" ${!data.website.repo || web.busy ? "disabled" : ""}><option value="">Choose a branch</option>${web.branches.map(branch => `<option value="${esc(branch.name)}" ${data.website.branch === branch.name ? "selected" : ""}>${esc(branch.name)}</option>`).join("")}</select></label><label>Website page<select id="webFile" ${!data.website.branch || web.busy ? "disabled" : ""}><option value="">Choose an HTML page</option>${web.files.map(file => `<option value="${esc(file.path)}" ${data.website.path === file.path ? "selected" : ""}>${esc(file.path)}</option>`).join("")}</select></label></div>${selectedRepo()?.permissions?.push === false ? '<div class="web-warning">This repository is view-only for the connected account.</div>' : ""}</article>` : "";
+    const editor = connected && web.doc ? editorMarkup() : "";
+    view.innerHTML = `${toolbar("Edit a public website", "Change words, pictures, and buttons visually. No Cloudflare tunnel, backend, or coding is required.")}<section class="web-work">${connect}${choose}${web.message ? `<div class="web-message ${web.commitUrl ? "success" : ""}"><span>${esc(web.message)}</span>${web.commitUrl ? `<a href="${esc(web.commitUrl)}" target="_blank" rel="noopener noreferrer">Open GitHub commit</a>` : ""}</div>` : ""}${editor}</section>`;
+    $("#ghForm")?.addEventListener("submit", event => { event.preventDefault(); connectGitHub(new FormData(event.currentTarget).get("token")); });
+    $("#webRepo")?.addEventListener("change", event => loadRepo(event.target.value));
+    $("#webBranch")?.addEventListener("change", event => loadBranch(event.target.value));
+    $("#webFile")?.addEventListener("change", event => loadHtml(event.target.value));
+    $("#webSearch")?.addEventListener("input", event => drawCards(event.target.value));
+    $("#webCards")?.addEventListener("input", editPart);
+    $("#webCards")?.addEventListener("change", replaceImage);
+    updatePreview();
+  }
+
+  function editorMarkup() {
+    const blocked = web.busy || selectedRepo()?.permissions?.push === false;
+    return `<section class="web-editor"><article class="panel edit-panel"><div class="web-head"><div><p class="step">STEP 3 OF 4</p><h3>Edit the page</h3><p>Type into a box or choose a replacement image. The preview updates as you work.</p></div><span class="chip">${esc(data.website.path)}</span></div><div class="part-tabs"><button data-action="web-tab" data-tab="text" class="${web.tab === "text" ? "active" : ""}"><b>T</b>Text <em>${web.parts.text.length}</em></button><button data-action="web-tab" data-tab="image" class="${web.tab === "image" ? "active" : ""}"><b>I</b>Images <em>${web.parts.image.length}</em></button><button data-action="web-tab" data-tab="button" class="${web.tab === "button" ? "active" : ""}"><b>B</b>Buttons & links <em>${web.parts.button.length}</em></button></div><div class="web-search"><input id="webSearch" type="search" placeholder="Find something on this page"></div><div id="webCards" class="web-cards">${cards(web.tab)}</div></article><aside class="panel web-preview"><div class="panel-head"><div><h3>Live preview</h3><span>Safe, isolated preview</span></div><button class="secondary compact" data-action="web-preview">Refresh</button></div><iframe id="webPreview" title="Website preview" sandbox="allow-scripts allow-forms allow-popups"></iframe></aside><article class="panel web-publish"><div><p class="step">STEP 4 OF 4</p><h3>Publish your changes</h3><p>Creates one GitHub commit with the edited HTML and replacement images. GitHub Pages, Cloudflare Pages, or another connected host can deploy it automatically.</p></div><div class="publish-row"><label>Change note<input id="commitMessage" value="Update website with Flex Connect" maxlength="120"></label><button class="primary" data-action="web-publish" ${blocked ? "disabled" : ""}>${esc(web.busy || "Publish to GitHub")}</button></div></article></section>`;
+  }
+
+  function targetValue(item, kind) { return kind === "image" ? `${item.el.getAttribute("src") || ""} ${item.el.getAttribute("alt") || ""}` : item.get(); }
+
+  function cards(kind, query = "") {
+    const q = query.trim().toLowerCase();
+    const items = web.parts[kind].map((item, index) => ({ item, index })).filter(row => !q || `${row.item.context} ${targetValue(row.item, kind)}`.toLowerCase().includes(q));
+    if (!items.length) return empty(q ? "No matching items." : "Nothing editable was found in this category.");
+    return items.map(({ item, index }) => {
+      if (kind === "text") return `<article class="edit-card"><div class="card-name"><b>T</b><div><strong>${esc(item.label)}</strong><small>${esc(item.context)}</small></div></div><label>Text${item.get().length > 90 ? `<textarea data-kind="text" data-index="${index}" data-field="value">${esc(item.get())}</textarea>` : `<input data-kind="text" data-index="${index}" data-field="value" value="${esc(item.get())}">`}</label></article>`;
+      if (kind === "image") return `<article class="edit-card image-edit"><img src="${esc(imagePreview(item, index))}" alt=""><div><div class="card-name"><b>I</b><div><strong>${esc(item.label)}</strong><small>${esc(item.context)}</small></div></div><label>Image description<input data-kind="image" data-index="${index}" data-field="alt" value="${esc(item.el.getAttribute("alt") || "")}"></label><label class="image-pick">Replace this image<input type="file" accept="image/*" data-image data-index="${index}"></label></div></article>`;
+      const href = item.el.tagName === "A" ? item.el.getAttribute("href") || "" : null;
+      return `<article class="edit-card"><div class="card-name"><b>B</b><div><strong>${item.el.tagName === "A" ? "Link" : "Button"}</strong><small>${esc(item.context)}</small></div></div><label>Button text<input data-kind="button" data-index="${index}" data-field="value" value="${esc(item.get())}"></label>${href !== null ? `<label>Goes to<input data-kind="button" data-index="${index}" data-field="href" value="${esc(href)}" placeholder="https://example.com or /page.html"></label>` : ""}</article>`;
+    }).join("");
+  }
+
+  function drawCards(query = "") { const area = $("#webCards"); if (area) area.innerHTML = cards(web.tab, query); }
+
+  async function connectGitHub(token) {
+    githubToken = String(token || "").trim(); if (!githubToken) return;
+    web.busy = "Connecting…"; web.message = ""; renderWebsite();
+    try {
+      [web.user, web.repos] = await Promise.all([gh("/user"), ghPages("/user/repos?sort=updated&affiliation=owner%2Ccollaborator%2Corganization_member")]);
+      web.repos.sort((a, b) => a.full_name.localeCompare(b.full_name)); web.busy = ""; web.message = `${web.repos.length} repositories available.`;
+      if (data.website.repo && web.repos.some(repo => repo.full_name === data.website.repo)) await loadRepo(data.website.repo, true); else renderWebsite();
+    } catch (error) { githubToken = ""; web.user = null; web.repos = []; web.busy = ""; web.message = error.message; renderWebsite(); notify(error.message, true); }
+  }
+
+  async function refreshRepos() {
+    web.busy = "Refreshing…"; renderWebsite();
+    try { web.repos = (await ghPages("/user/repos?sort=updated&affiliation=owner%2Ccollaborator%2Corganization_member")).sort((a, b) => a.full_name.localeCompare(b.full_name)); web.busy = ""; web.message = "Repository list refreshed."; renderWebsite(); }
+    catch (error) { web.busy = ""; web.message = error.message; renderWebsite(); }
+  }
+
+  function disconnectGitHub() { githubToken = ""; web.user = null; web.repos = []; web.branches = []; web.files = []; clearWebDoc(); web.message = "GitHub disconnected. The key was cleared from memory."; renderWebsite(); }
+
+  async function loadRepo(name, keep = false) {
+    const oldBranch = keep ? data.website.branch : "", oldPath = keep ? data.website.path : ""; clearWebDoc(); web.branches = []; web.files = []; data.website = { repo: name, branch: "", path: "" };
+    if (!name) { await saveData(); return renderWebsite(); }
+    web.busy = "Finding branches…"; web.message = ""; renderWebsite();
+    try { web.branches = await ghPages(`/repos/${repoPath(name)}/branches`); const repo = selectedRepo(); const branch = web.branches.some(item => item.name === oldBranch) ? oldBranch : repo.default_branch || web.branches[0]?.name; if (!branch) throw new Error("No branches were found."); data.website.branch = branch; await loadBranch(branch, oldPath); }
+    catch (error) { web.busy = ""; web.message = error.message; renderWebsite(); notify(error.message, true); }
+  }
+
+  async function loadBranch(name, preferred = "") {
+    clearWebDoc(); web.files = []; data.website.branch = name; data.website.path = "";
+    if (!name) { await saveData(); return renderWebsite(); }
+    const branch = web.branches.find(item => item.name === name); web.busy = "Finding website pages…"; renderWebsite();
+    try { const tree = await gh(`/repos/${repoPath(data.website.repo)}/git/trees/${encodeURIComponent(branch.commit.sha)}?recursive=1`); web.files = (tree.tree || []).filter(item => item.type === "blob" && /\.html?$/i.test(item.path)).sort((a, b) => a.path.localeCompare(b.path)); if (!web.files.length) throw new Error("No HTML pages were found in this branch."); const path = web.files.some(file => file.path === preferred) ? preferred : web.files.find(file => file.path.toLowerCase() === "index.html")?.path || web.files.find(file => /(^|\/)index\.html$/i.test(file.path))?.path || web.files[0].path; await loadHtml(path); }
+    catch (error) { web.busy = ""; web.message = error.message; await saveData(); renderWebsite(); notify(error.message, true); }
+  }
+
+  async function loadHtml(path) {
+    clearWebDoc(); data.website.path = path;
+    if (!path) { await saveData(); return renderWebsite(); }
+    const file = web.files.find(item => item.path === path); web.busy = "Opening page…"; web.message = ""; renderWebsite();
+    try { const blob = await gh(`/repos/${repoPath(data.website.repo)}/git/blobs/${encodeURIComponent(file.sha)}`); const bytes = Uint8Array.from(atob(blob.content.replace(/\s/g, "")), char => char.charCodeAt(0)); web.doc = new DOMParser().parseFromString(new TextDecoder().decode(bytes), "text/html"); analyzeHtml(); web.busy = ""; web.message = `Ready to edit ${path}.`; await saveData(); renderWebsite(); }
+    catch (error) { web.busy = ""; web.message = error.message; renderWebsite(); notify(error.message, true); }
+  }
+
+  function contextFor(el) { const area = el.closest("section,header,footer,nav,main,article") || el.parentElement; const heading = area?.querySelector("h1,h2,h3")?.textContent?.trim().replace(/\s+/g, " "); return heading && heading.length < 70 ? heading : area?.id ? `#${area.id}` : area?.tagName?.toLowerCase() || "page"; }
+  function textPart(node, label, el = node.parentElement) { const match = node.nodeValue.match(/^(\s*)([\s\S]*?)(\s*)$/); const before = match?.[1] || "", after = match?.[3] || ""; return { el, label, context: contextFor(el), get: () => node.nodeValue.trim(), set: value => { node.nodeValue = `${before}${value}${after}`; } }; }
+  function buttonText(el) { const walker = web.doc.createTreeWalker(el, NodeFilter.SHOW_TEXT); let node; while ((node = walker.nextNode())) if (node.nodeValue.trim() && !node.parentElement.closest("svg")) return node; return null; }
+
+  function analyzeHtml() {
+    const parts = { text: [], image: [], button: [] }, walker = web.doc.createTreeWalker(web.doc.body, NodeFilter.SHOW_TEXT); let node;
+    while ((node = walker.nextNode())) { const el = node.parentElement, value = node.nodeValue.trim(); if (!value || !el || el.closest("script,style,svg,noscript,template,a,button")) continue; const tag = el.tagName.toLowerCase(); parts.text.push(textPart(node, /^h[1-6]$/.test(tag) ? "Heading" : tag === "p" ? "Paragraph" : tag === "li" ? "List item" : "Text", el)); }
+    [...web.doc.querySelectorAll("img")].forEach((el, i) => parts.image.push({ el, label: el.getAttribute("alt") || `Image ${i + 1}`, context: contextFor(el) }));
+    [...web.doc.querySelectorAll("a,button")].forEach(el => { const node = buttonText(el); if (node) parts.button.push(textPart(node, el.tagName === "A" ? "Link" : "Button", el)); else if (el.getAttribute("aria-label")) parts.button.push({ el, label: "Button", context: contextFor(el), get: () => el.getAttribute("aria-label") || "", set: value => el.setAttribute("aria-label", value) }); });
+    web.parts = parts;
+  }
+
+  function editPart(event) { const input = event.target.closest("[data-field]"); if (!input) return; const item = web.parts[input.dataset.kind]?.[number(input.dataset.index)]; if (!item) return; if (input.dataset.field === "value") item.set(input.value); else if (input.dataset.field === "href") input.value ? item.el.setAttribute("href", input.value) : item.el.removeAttribute("href"); else item.el.setAttribute("alt", input.value); clearTimeout(web.timer); web.timer = setTimeout(updatePreview, 250); }
+
+  async function replaceImage(event) {
+    const input = event.target.closest("[data-image]"), file = input?.files?.[0]; if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 20 * 1024 * 1024) return notify("Choose an image smaller than 20 MB.", true);
+    const index = number(input.dataset.index), target = web.parts.image[index], old = web.images.find(item => item.index === index); if (old) { URL.revokeObjectURL(old.url); web.images = web.images.filter(item => item !== old); }
+    const safe = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-") || "image"; const dir = data.website.path.includes("/") ? data.website.path.slice(0, data.website.path.lastIndexOf("/") + 1) : ""; const relative = `assets/flex-connect/${Date.now()}-${safe}`;
+    web.images.push({ index, file, path: `${dir}${relative}`, url: URL.createObjectURL(file) }); target.el.setAttribute("src", relative); drawCards($("#webSearch")?.value || ""); updatePreview(); notify("Replacement image is ready to publish.");
+  }
+
+  function rawBase() { const [owner, repo] = data.website.repo.split("/"); const dir = data.website.path.includes("/") ? data.website.path.slice(0, data.website.path.lastIndexOf("/") + 1) : ""; const revision = web.branches.find(item => item.name === data.website.branch)?.commit?.sha || data.website.branch; return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(revision)}/${dir.split("/").filter(Boolean).map(encodeURIComponent).join("/")}${dir ? "/" : ""}`; }
+  function imagePreview(item, index) { const staged = web.images.find(image => image.index === index); if (staged) return staged.url; try { return new URL(item.el.getAttribute("src") || "", rawBase()).href; } catch { return item.el.getAttribute("src") || ""; } }
+  function serialize(doc = web.doc) { return `${doc.doctype ? `<!DOCTYPE ${doc.doctype.name}>` : "<!doctype html>"}\n${doc.documentElement.outerHTML}`; }
+  function updatePreview() { clearTimeout(web.timer); const frame = $("#webPreview"); if (!frame || !web.doc) return; const clone = new DOMParser().parseFromString(serialize(), "text/html"); const base = clone.createElement("base"); base.href = rawBase(); base.target = "_blank"; clone.head.prepend(base); const images = [...clone.querySelectorAll("img")]; web.images.forEach(item => { if (images[item.index]) images[item.index].src = item.url; }); frame.srcdoc = serialize(clone); }
+  function buffer64(buffer) { const bytes = new Uint8Array(buffer); let value = ""; for (let i = 0; i < bytes.length; i += 32768) value += String.fromCharCode(...bytes.subarray(i, i + 32768)); return btoa(value); }
+
+  async function publishHtml() {
+    const repo = selectedRepo(); if (!repo || !web.doc) throw new Error("Choose a website page first."); if (repo.permissions?.push === false) throw new Error("This account cannot publish to this repository.");
+    const message = $("#commitMessage")?.value.trim() || "Update website with Flex Connect"; web.busy = "Publishing…"; web.message = "Creating one GitHub commit…"; renderWebsite();
+    try { const rp = repoPath(data.website.repo), branch = data.website.branch.split("/").map(encodeURIComponent).join("/"); const head = await gh(`/repos/${rp}/git/ref/heads/${branch}`); const parent = await gh(`/repos/${rp}/git/commits/${head.object.sha}`); const html = await gh(`/repos/${rp}/git/blobs`, { method: "POST", body: JSON.stringify({ content: serialize(), encoding: "utf-8" }) }); const entries = [{ path: data.website.path, mode: "100644", type: "blob", sha: html.sha }]; for (const image of web.images) { const blob = await gh(`/repos/${rp}/git/blobs`, { method: "POST", body: JSON.stringify({ content: buffer64(await image.file.arrayBuffer()), encoding: "base64" }) }); entries.push({ path: image.path, mode: "100644", type: "blob", sha: blob.sha }); } const tree = await gh(`/repos/${rp}/git/trees`, { method: "POST", body: JSON.stringify({ base_tree: parent.tree.sha, tree: entries }) }); const commit = await gh(`/repos/${rp}/git/commits`, { method: "POST", body: JSON.stringify({ message, tree: tree.sha, parents: [head.object.sha] }) }); await gh(`/repos/${rp}/git/refs/heads/${branch}`, { method: "PATCH", body: JSON.stringify({ sha: commit.sha, force: false }) }); const current = web.branches.find(item => item.name === data.website.branch); if (current?.commit) current.commit.sha = commit.sha; web.images.forEach(item => URL.revokeObjectURL(item.url)); web.images = []; web.busy = ""; web.message = "Published to GitHub. Your connected website host can now deploy this commit."; web.commitUrl = `https://github.com/${data.website.repo}/commit/${commit.sha}`; renderWebsite(); notify("Website published to GitHub."); }
+    catch (error) { web.busy = ""; web.message = error.message; renderWebsite(); notify(error.message, true); }
   }
 
   function renderSettings() {
@@ -459,6 +612,11 @@
       }
       else if (action === "select-signup-plan") { selectedSignupPlan = recordId; render(); }
       else if (action === "clear-visits" && confirm("Permanently clear all visit history from the data file?")) { data.visits = []; await saveData(); render(); }
+      else if (action === "gh-disconnect") disconnectGitHub();
+      else if (action === "gh-refresh") await refreshRepos();
+      else if (action === "web-tab") { web.tab = button.dataset.tab; renderWebsite(); }
+      else if (action === "web-preview") updatePreview();
+      else if (action === "web-publish") await publishHtml();
       else if (action === "scan-nfc") await startWebNfc();
       else if (action === "write-nfc") await writeNfc();
       else if (action === "connect-serial") await connectSerial();
