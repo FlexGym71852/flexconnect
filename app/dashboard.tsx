@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { hardware, type DoorBluetoothConfig, type DoorWifiConfig, type HardwareState, type ReaderBluetoothConfig, type ReaderWifiConfig, type Transport } from "./hardware";
+import { apiFetch, getApiConfig, hasExternalApi, isGitHubPagesBuild, publicAppUrl, saveApiConfig, type ApiConfig } from "./api-client";
 
 type View = "overview" | "members" | "plans" | "access" | "pos" | "reports" | "settings";
 
@@ -91,10 +92,11 @@ export default function Dashboard() {
   const [metrics, setMetrics] = useState<Metrics>({ activeMembers: 0, visitsToday: 0, totalVisits: 0, monthlyRevenue: 0, tax: 0, debt: 0 });
   const [integrations, setIntegrations] = useState({ stripe: false });
   const [hardwareState, setHardwareState] = useState<HardwareState>(() => hardware.getState());
+  const [externalApiReady, setExternalApiReady] = useState(() => hasExternalApi());
 
   const refreshData = useCallback(async () => {
     try {
-      const response = await fetch("/api/bootstrap", { cache: "no-store" });
+      const response = await apiFetch("/api/bootstrap", { cache: "no-store" });
       const data = await response.json() as {
         members?: Array<Record<string, unknown>>; plans?: Array<Record<string, unknown>>; products?: Array<Record<string, unknown>>; visits?: Array<Record<string, unknown>>;
         settings?: Record<string, string>; integrations?: { stripe?: boolean; door?: boolean };
@@ -129,7 +131,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => hardware.subscribeTags(async (token) => {
-    const response = await fetch("/api/access", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, method: "reader" }) });
+    const response = await apiFetch("/api/access", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, method: "reader" }) });
     const result = await response.json() as { approved?: boolean; reason?: string; member?: { name?: string }; error?: string };
     if (!response.ok || !result.approved) { notify(result.reason || result.error || "Access denied"); return; }
     const name = result.member?.name || "Member";
@@ -148,7 +150,7 @@ export default function Dashboard() {
     const data = new FormData(event.currentTarget);
     const name = String(data.get("name") || "New member");
     const plan = plans.find((item) => item.name === String(data.get("plan")));
-    const response = await fetch("/api/members", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, phone: data.get("phone"), email: data.get("email"), planId: plan?.id }) });
+    const response = await apiFetch("/api/members", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, phone: data.get("phone"), email: data.get("email"), planId: plan?.id }) });
     if (!response.ok) { notify("Member could not be added"); return; }
     setModal(null); notify(`${name} was added`); await refreshData();
   }
@@ -157,7 +159,7 @@ export default function Dashboard() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const name = String(data.get("name"));
-    const response = await fetch("/api/plans", { method: editingPlan ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: editingPlan?.id, name, description: data.get("description"), priceCents: Math.round(Number(data.get("price")) * 100), stripePriceId: data.get("stripe") }) });
+    const response = await apiFetch("/api/plans", { method: editingPlan ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: editingPlan?.id, name, description: data.get("description"), priceCents: Math.round(Number(data.get("price")) * 100), stripePriceId: data.get("stripe") }) });
     if (!response.ok) { notify("Membership could not be created"); return; }
     setModal(null); setEditingPlan(null); notify(`${name} ${editingPlan ? "was updated" : "is ready for Stripe"}`); await refreshData();
   }
@@ -166,7 +168,7 @@ export default function Dashboard() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const name = String(data.get("name"));
-    const response = await fetch("/api/products", { method: editingProduct ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: editingProduct?.id, name, sku: data.get("sku"), details: data.get("meta"), priceCents: Math.round(Number(data.get("price")) * 100), stock: Number(data.get("stock")) }) });
+    const response = await apiFetch("/api/products", { method: editingProduct ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: editingProduct?.id, name, sku: data.get("sku"), details: data.get("meta"), priceCents: Math.round(Number(data.get("price")) * 100), stock: Number(data.get("stock")) }) });
     if (!response.ok) { const result = await response.json() as { error?: string }; notify(result.error || "Item could not be added"); return; }
     setModal(null); setEditingProduct(null); notify(`${name} ${editingProduct ? "was updated" : "was added to inventory"}`); await refreshData();
   }
@@ -177,11 +179,11 @@ export default function Dashboard() {
 
   async function checkout(paymentMethod: "cash" | "card") {
     if (!cartItems.length) return;
-    const response = await fetch("/api/sales", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paymentMethod, items: cartItems.map((item) => ({ productId: item.id, quantity: item.quantity })) }) });
+    const response = await apiFetch("/api/sales", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paymentMethod, items: cartItems.map((item) => ({ productId: item.id, quantity: item.quantity })) }) });
     const sale = await response.json() as { saleId?: string; error?: string };
     if (!response.ok || !sale.saleId) { notify(sale.error || "Sale could not be completed"); return; }
     if (paymentMethod === "card") {
-      const stripe = await fetch("/api/stripe/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "pos", saleId: sale.saleId }) });
+      const stripe = await apiFetch("/api/stripe/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "pos", saleId: sale.saleId }) });
       const result = await stripe.json() as { url?: string; error?: string };
       if (!stripe.ok || !result.url) { notify(result.error || "Stripe checkout is not configured"); return; }
       window.location.assign(result.url); return;
@@ -198,7 +200,7 @@ export default function Dashboard() {
   }
 
   async function createNfc(member: Member) {
-    const response = await fetch("/api/nfc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ memberId: member.id }) });
+    const response = await apiFetch("/api/nfc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ memberId: member.id }) });
     const result = await response.json() as { record?: string; error?: string };
     if (!response.ok || !result.record) { notify(result.error || "NFC key could not be created"); return; }
     if (hardwareState.reader.status === "connected") {
@@ -230,17 +232,18 @@ export default function Dashboard() {
       <main className="workspace">
         <header className="topbar">
           <div><p>FLEX CONNECT / {title.toUpperCase()}</p><h1>{title}</h1></div>
-          <div className="top-actions"><span className={`sync-state ${hardwareState.door.status === "connected" && hardwareState.reader.status === "connected" ? "" : "offline"}`}><i />{hardwareState.door.status === "connected" && hardwareState.reader.status === "connected" ? "Devices connected" : "Hardware setup needed"}</span><a href="/join" className="ghost-button">Public signup</a><button className="primary-button" onClick={() => setModal("scan")}>Scan member</button></div>
+          <div className="top-actions"><span className={`sync-state ${hardwareState.door.status === "connected" && hardwareState.reader.status === "connected" ? "" : "offline"}`}><i />{hardwareState.door.status === "connected" && hardwareState.reader.status === "connected" ? "Devices connected" : "Hardware setup needed"}</span><a href={publicAppUrl("/join")} className="ghost-button">Public signup</a><button className="primary-button" onClick={() => setModal("scan")}>Scan member</button></div>
         </header>
 
         <div className="page-body">
+          {isGitHubPagesBuild && !externalApiReady && <button className="pages-setup-banner" onClick={() => setView("settings")}><strong>GitHub Pages frontend is ready.</strong><span>Connect the secure Flex backend in Settings to enable members, Stripe, reports, and POS data.</span><b>Open Settings →</b></button>}
           {view === "overview" && <Overview members={members} metrics={metrics} hardwareState={hardwareState} setView={setView} setModal={setModal} operateDoor={operateDoor} />}
           {view === "members" && <Members members={visibleMembers} query={query} setQuery={setQuery} setModal={setModal} createNfc={createNfc} notify={notify} />}
           {view === "plans" && <Plans plans={plans} setPlans={setPlans} setModal={setModal} setEditingPlan={setEditingPlan} notify={notify} />}
           {view === "access" && <Access members={members} doorOpen={doorOpen} hardwareState={hardwareState} setModal={setModal} notify={notify} operateDoor={operateDoor} createNfc={createNfc} />}
           {view === "pos" && <POS products={products} setProducts={setProducts} setModal={setModal} setEditingProduct={setEditingProduct} cart={cart} addToCart={addToCart} cartItems={cartItems} subtotal={subtotal} tax={tax} checkout={checkout} />}
           {view === "reports" && <Reports members={members} metrics={metrics} visits={visits} />}
-          {view === "settings" && <Settings taxRate={taxRate} setTaxRate={setTaxRate} integrations={integrations} hardwareState={hardwareState} notify={notify} />}
+          {view === "settings" && <Settings taxRate={taxRate} setTaxRate={setTaxRate} integrations={integrations} hardwareState={hardwareState} onApiReady={() => setExternalApiReady(true)} notify={notify} />}
         </div>
       </main>
 
@@ -279,8 +282,8 @@ function Members({ members, query, setQuery, setModal, createNfc }: { members: M
 }
 
 function Plans({ plans, setPlans, setModal, setEditingPlan, notify }: { plans: Plan[]; setPlans: React.Dispatch<React.SetStateAction<Plan[]>>; setModal: (v: "plan") => void; setEditingPlan: (plan: Plan | null) => void; notify: (v: string) => void }) {
-  async function toggle(plan: Plan) { setPlans((all) => all.map((item) => item.id === plan.id ? {...item,active:!item.active} : item)); const response = await fetch("/api/plans", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: plan.id, active: !plan.active }) }); if (!response.ok) setPlans((all) => all.map((item) => item.id === plan.id ? {...item,active:plan.active} : item)); else notify(`${plan.name} ${plan.active ? "hidden from" : "added to"} signup`); }
-  return <div className="content-stack"><section className="section-toolbar"><div><p className="eyebrow">STRIPE SUBSCRIPTIONS</p><h2>Membership options</h2><p>Prices and availability update the public signup page.</p></div><button className="primary-button" onClick={() => {setEditingPlan(null);setModal("plan")}}>+ New membership</button></section><section className="plan-grid">{plans.map((plan) => <article className="plan-card" key={plan.id}><div className={`plan-accent ${plan.color}`} /><div className="plan-top"><span>{plan.active ? "LIVE" : "HIDDEN"}</span><button className="more-button" aria-label={`Edit ${plan.name}`} onClick={() => {setEditingPlan(plan);setModal("plan")}}>Edit</button></div><h3>{plan.name}</h3><p>{plan.description}</p><div className="plan-price"><strong>{money(plan.price)}</strong><span>/ month</span></div><dl><div><dt>Members</dt><dd>{plan.members}</dd></div><div><dt>Stripe billing</dt><dd className="connected">{plan.stripePriceId ? "Price linked" : "Dynamic price"}</dd></div></dl><button className="ghost-button full" onClick={() => void toggle(plan)}>{plan.active ? "Hide from signup" : "Publish plan"}</button></article>)}</section><section className="info-strip"><div><strong>Public membership page</strong><span>Members choose a plan and pay securely through Stripe Checkout.</span></div><a href="/join" className="ghost-button">Open signup page ↗</a></section></div>;
+  async function toggle(plan: Plan) { setPlans((all) => all.map((item) => item.id === plan.id ? {...item,active:!item.active} : item)); const response = await apiFetch("/api/plans", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: plan.id, active: !plan.active }) }); if (!response.ok) setPlans((all) => all.map((item) => item.id === plan.id ? {...item,active:plan.active} : item)); else notify(`${plan.name} ${plan.active ? "hidden from" : "added to"} signup`); }
+  return <div className="content-stack"><section className="section-toolbar"><div><p className="eyebrow">STRIPE SUBSCRIPTIONS</p><h2>Membership options</h2><p>Prices and availability update the public signup page.</p></div><button className="primary-button" onClick={() => {setEditingPlan(null);setModal("plan")}}>+ New membership</button></section><section className="plan-grid">{plans.map((plan) => <article className="plan-card" key={plan.id}><div className={`plan-accent ${plan.color}`} /><div className="plan-top"><span>{plan.active ? "LIVE" : "HIDDEN"}</span><button className="more-button" aria-label={`Edit ${plan.name}`} onClick={() => {setEditingPlan(plan);setModal("plan")}}>Edit</button></div><h3>{plan.name}</h3><p>{plan.description}</p><div className="plan-price"><strong>{money(plan.price)}</strong><span>/ month</span></div><dl><div><dt>Members</dt><dd>{plan.members}</dd></div><div><dt>Stripe billing</dt><dd className="connected">{plan.stripePriceId ? "Price linked" : "Dynamic price"}</dd></div></dl><button className="ghost-button full" onClick={() => void toggle(plan)}>{plan.active ? "Hide from signup" : "Publish plan"}</button></article>)}</section><section className="info-strip"><div><strong>Public membership page</strong><span>Members choose a plan and pay securely through Stripe Checkout.</span></div><a href={publicAppUrl("/join")} className="ghost-button">Open signup page ↗</a></section></div>;
 }
 
 function Access({ members, doorOpen, hardwareState, setModal, operateDoor, createNfc }: { members: Member[]; doorOpen: boolean; hardwareState: HardwareState; setModal: (v: "scan") => void; notify: (v: string) => void; operateDoor: (action: "open" | "close") => Promise<void>; createNfc: (member: Member) => Promise<void> }) {
@@ -290,7 +293,7 @@ function Access({ members, doorOpen, hardwareState, setModal, operateDoor, creat
 
 function POS({ products, setProducts, setModal, setEditingProduct, cart, addToCart, cartItems, subtotal, tax, checkout }: { products: Product[]; setProducts: React.Dispatch<React.SetStateAction<Product[]>>; setModal: (v: "product") => void; setEditingProduct: (product: Product | null) => void; cart: Record<string, number>; addToCart: (id: string) => void; cartItems: (Product & {quantity:number})[]; subtotal: number; tax: number; checkout: (method: "cash" | "card") => Promise<void> }) {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("card");
-  async function removeProduct(product: Product) { const response = await fetch(`/api/products?id=${encodeURIComponent(product.id)}`, { method: "DELETE" }); if (response.ok) setProducts((all) => all.filter((item) => item.id !== product.id)); }
+  async function removeProduct(product: Product) { const response = await apiFetch(`/api/products?id=${encodeURIComponent(product.id)}`, { method: "DELETE" }); if (response.ok) setProducts((all) => all.filter((item) => item.id !== product.id)); }
   return <div className="pos-layout"><section className="catalog"><div className="section-toolbar"><div><p className="eyebrow">RETAIL</p><h2>Clothing inventory</h2></div><button className="primary-button" onClick={() => {setEditingProduct(null);setModal("product")}}>+ Add item</button></div><div className="product-grid">{products.map((product, index) => <article className="product-card" key={product.id}><div className={`product-art art-${index % 4}`}><span>{product.name.split(" ").at(-1)?.slice(0,2).toUpperCase()}</span></div><div className="product-copy"><p>{product.sku}</p><h3>{product.name}</h3><span>{product.meta}</span><div><strong>{money(product.price)}</strong><small>{product.stock} in stock</small></div><div className="product-actions"><button className="primary-button" disabled={product.stock <= (cart[product.id] || 0)} onClick={() => addToCart(product.id)}>Add to cart {cart[product.id] ? `(${cart[product.id]})` : ""}</button><button className="more-button" aria-label={`Edit ${product.name}`} onClick={() => {setEditingProduct(product);setModal("product")}}>Edit</button><button className="more-button remove" aria-label={`Remove ${product.name}`} onClick={() => void removeProduct(product)}>Remove</button></div></div></article>)}</div></section><aside className="cart-panel"><div><p className="eyebrow">CURRENT SALE</p><h2>Cart <span>{cartItems.reduce((sum,item) => sum + item.quantity,0)} items</span></h2></div><div className="cart-items">{cartItems.length ? cartItems.map((item) => <div key={item.id}><div><strong>{item.name}</strong><small>{item.quantity} × {money(item.price)}</small></div><b>{money(item.quantity * item.price)}</b></div>) : <div className="empty-cart"><span>FC</span><strong>No items yet</strong><p>Select clothing to begin a sale.</p></div>}</div><div className="totals"><p><span>Subtotal</span><strong>{money(subtotal)}</strong></p><p><span>Tax</span><strong>{money(tax)}</strong></p><p className="grand"><span>Total</span><strong>{money(subtotal + tax)}</strong></p><label>Payment method<select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as "cash" | "card")}><option value="card">Card — Stripe</option><option value="cash">Cash</option></select></label><button className="primary-button full" disabled={!cartItems.length} onClick={() => void checkout(paymentMethod)}>Complete sale</button></div></aside></div>;
 }
 
@@ -303,8 +306,9 @@ function DeviceBadge({ connection }: { connection: HardwareState["door"] }) {
   return <span className={`integration-state ${connection.status === "connected" ? "" : "offline"}`}><i />{connection.status === "connecting" ? "Connecting…" : connection.status === "connected" ? `Connected · ${connection.transport}` : connection.status === "error" ? "Connection error" : "Not connected"}</span>;
 }
 
-function Settings({ taxRate, setTaxRate, integrations, hardwareState, notify }: { taxRate: number; setTaxRate: (v: number) => void; integrations: { stripe: boolean }; hardwareState: HardwareState; notify: (v: string) => void }) {
+function Settings({ taxRate, setTaxRate, integrations, hardwareState, onApiReady, notify }: { taxRate: number; setTaxRate: (v: number) => void; integrations: { stripe: boolean }; hardwareState: HardwareState; onApiReady: () => void; notify: (v: string) => void }) {
   const stored = hardware.configs();
+  const [apiConfig, setApiConfig] = useState<ApiConfig>(() => getApiConfig());
   const [doorTransport, setDoorTransport] = useState<Transport>("wifi");
   const [readerTransport, setReaderTransport] = useState<Transport>("wifi");
   const [doorWifi, setDoorWifi] = useState<DoorWifiConfig>(stored.doorWifi);
@@ -312,7 +316,17 @@ function Settings({ taxRate, setTaxRate, integrations, hardwareState, notify }: 
   const [readerWifi, setReaderWifi] = useState<ReaderWifiConfig>(stored.readerWifi);
   const [readerBluetooth, setReaderBluetooth] = useState<ReaderBluetoothConfig>(stored.readerBluetooth);
 
-  async function save() { const response = await fetch("/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ tax_rate: taxRate }) }); notify(response.ok ? "Settings saved" : "Settings could not be saved"); }
+  async function save() { const response = await apiFetch("/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ tax_rate: taxRate }) }); notify(response.ok ? "Settings saved" : "Settings could not be saved"); }
+  async function saveBackend() {
+    const normalized = saveApiConfig(apiConfig);
+    setApiConfig(normalized);
+    try {
+      const response = await apiFetch("/api/bootstrap", { cache: "no-store" });
+      if (!response.ok) throw new Error(response.status === 401 ? "The backend URL or admin token is not authorized." : `Backend returned HTTP ${response.status}.`);
+      onApiReady();
+      notify("Secure backend connected");
+    } catch (error) { notify(error instanceof Error ? error.message : "Backend connection failed"); }
+  }
   async function connectDoor() {
     try {
       if (doorTransport === "wifi") await hardware.connectDoorWifi(doorWifi);
@@ -329,6 +343,7 @@ function Settings({ taxRate, setTaxRate, integrations, hardwareState, notify }: 
   }
 
   return <div className="settings-wrap"><section className="section-toolbar"><div><p className="eyebrow">CONFIGURATION</p><h2>Business settings</h2><p>Connect real hardware and set the rules used across Flex Connect.</p></div></section>
+    {isGitHubPagesBuild && <section className="panel backend-settings"><div className="panel-head"><div><p className="eyebrow">GITHUB PAGES</p><h3>Secure data and Stripe backend</h3></div><span>Required for live data</span></div><div className="backend-form"><label>Backend URL<input value={apiConfig.baseUrl} onChange={(event) => setApiConfig({ ...apiConfig, baseUrl: event.target.value })} placeholder="https://your-flex-backend.example.com" /></label><label>Admin API token<input type="password" autoComplete="off" value={apiConfig.adminToken} onChange={(event) => setApiConfig({ ...apiConfig, adminToken: event.target.value })} placeholder="Stored only on this device" /></label><button className="primary-button" onClick={() => void saveBackend()}>Save and test</button></div><p className="hardware-note">GitHub Pages serves this interface. The backend securely handles Stripe secrets, webhooks, membership records, reports, and POS data.</p></section>}
     <section className="panel device-settings"><div className="panel-head"><div><p className="eyebrow">LOCAL HARDWARE</p><h3>Door and NFC devices</h3></div></div><div className="device-grid">
       <article className="device-card"><div className="device-card-head"><div><strong>Door controller</strong><small>{hardwareState.door.name || "Open/close relay"}</small></div><DeviceBadge connection={hardwareState.door} /></div><p className="device-message">{hardwareState.door.message}</p><label>Connection<select value={doorTransport} onChange={(event) => setDoorTransport(event.target.value as Transport)}><option value="wifi">Wi-Fi / local API</option><option value="bluetooth">Bluetooth LE</option></select></label>
         {doorTransport === "wifi" ? <div className="device-fields"><label>Controller URL<input value={doorWifi.endpoint} onChange={(event) => setDoorWifi({ ...doorWifi, endpoint: event.target.value })} placeholder="https://door.local/api/door" /></label><label>Bearer token<input type="password" autoComplete="off" value={doorWifi.token} onChange={(event) => setDoorWifi({ ...doorWifi, token: event.target.value })} placeholder="Optional device token" /></label></div> : <div className="device-fields"><label>BLE service UUID<input value={doorBluetooth.serviceUuid} onChange={(event) => setDoorBluetooth({ ...doorBluetooth, serviceUuid: event.target.value })} placeholder="Service UUID" /></label><label>Write characteristic UUID<input value={doorBluetooth.writeCharacteristicUuid} onChange={(event) => setDoorBluetooth({ ...doorBluetooth, writeCharacteristicUuid: event.target.value })} placeholder="Characteristic UUID" /></label><div className="split-fields"><label>Open command<input value={doorBluetooth.openCommand} onChange={(event) => setDoorBluetooth({ ...doorBluetooth, openCommand: event.target.value })} /></label><label>Close command<input value={doorBluetooth.closeCommand} onChange={(event) => setDoorBluetooth({ ...doorBluetooth, closeCommand: event.target.value })} /></label></div></div>}
@@ -347,7 +362,7 @@ function ScanPanel({ members, setMembers, hardwareState, onClose, notify, refres
   const [scanning, setScanning] = useState(false);
   const member = useMemo(() => members.find((m) => m.name.toLowerCase().includes(token.toLowerCase()) || m.id === token || m.nfcToken === token.replace(/^flexconnect:/, "")), [members, token]);
   const checkIn = useCallback(async (payload: { memberId?: string; token?: string; method: string }) => {
-    const response = await fetch("/api/access", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const response = await apiFetch("/api/access", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
     const result = await response.json() as { approved?: boolean; reason?: string; member?: { name?: string }; error?: string };
     if (!response.ok || !result.approved) { notify(result.reason || result.error || "Access denied"); setScanning(false); return; }
     const name = result.member?.name || member?.name || "Member";

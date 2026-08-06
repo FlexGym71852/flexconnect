@@ -3,8 +3,8 @@ import { stripeConfigured } from "../../../lib/stripe";
 import { runtimeValue } from "../../../lib/runtime";
 import { requireAdminApi } from "../../../lib/admin";
 
-export async function GET() {
-  const denied = await requireAdminApi(); if (denied) return denied;
+export async function GET(request: Request) {
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const d1 = getD1();
   const [members, plans, products, recentVisits, payments, settings, door] = await Promise.all([

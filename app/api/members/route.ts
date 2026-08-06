@@ -5,7 +5,7 @@ import { requireAdminApi } from "../../../lib/admin";
 type MemberPayload = { id?: string; name?: string; email?: string; phone?: string; planId?: string; status?: string; balanceCents?: number };
 
 export async function POST(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const body = await requestJson<MemberPayload>(request);
   if (!body.name?.trim()) return jsonError("Member name is required.");
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const body = await requestJson<MemberPayload>(request);
   if (!body.id) return jsonError("Member id is required.");
@@ -28,7 +28,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("Member id is required.");

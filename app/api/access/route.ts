@@ -5,7 +5,7 @@ import { requireAdminApi } from "../../../lib/admin";
 type AccessPayload = { token?: string; memberId?: string; method?: "nfc" | "manual" | "reader" };
 
 export async function POST(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const body = await requestJson<AccessPayload>(request);
   const token = body.token?.replace(/^flexconnect:/, "").trim();

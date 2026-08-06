@@ -3,7 +3,7 @@ import { jsonError, requestJson } from "../../../lib/runtime";
 import { requireAdminApi } from "../../../lib/admin";
 
 export async function POST(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const body = await requestJson<{ memberId?: string }>(request);
   if (!body.memberId) return jsonError("Member id is required.");
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const id = new URL(request.url).searchParams.get("memberId");
   if (!id) return jsonError("Member id is required.");

@@ -1,4 +1,38 @@
-# vinext-starter
+# Flex Connect
+
+Flex Connect is a membership, access control, visit reporting, subscription,
+and point-of-sale dashboard. The full application runs on a server-backed
+deployment, and a dedicated static frontend can be published on GitHub Pages.
+
+## GitHub Pages
+
+GitHub Pages hosts static files, so the included Pages build contains the
+dashboard interface while Stripe secrets, webhooks, membership data, and the
+database remain on a separately deployed backend.
+
+1. Push this project to a GitHub repository with `main` as the default branch.
+2. In **Settings → Pages**, choose **GitHub Actions** as the source.
+3. Deploy the full backend on a public HTTPS origin.
+4. Add a repository variable named `FLEX_API_BASE_URL` containing that backend
+   origin, such as `https://api.example.com`. You can also enter the backend URL
+   from the dashboard's Settings page after deployment.
+5. Set `ADMIN_API_TOKEN` on the backend and enter the same value in the Pages
+   dashboard's Settings page. Never put Stripe secret keys in a GitHub Pages
+   variable or in browser code.
+
+The workflow at `.github/workflows/deploy-pages.yml` builds and publishes the
+site automatically on pushes to `main`. To verify the static build locally:
+
+```bash
+npm ci
+npm run build:pages
+```
+
+The static output is written to `dist-pages/`. Browser-supported Bluetooth and
+NFC connections run locally in the dashboard; server-mediated Wi-Fi devices,
+Stripe, and database features use the configured backend.
+
+## Full application
 
 A clean full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and

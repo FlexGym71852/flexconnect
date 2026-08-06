@@ -5,7 +5,7 @@ import { requireAdminApi } from "../../../lib/admin";
 type SalePayload = { paymentMethod?: "cash" | "card"; items?: Array<{ productId: string; quantity: number }> };
 
 export async function POST(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const body = await requestJson<SalePayload>(request);
   if (!body.items?.length) return jsonError("Add at least one item to the sale.");

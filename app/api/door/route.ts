@@ -4,7 +4,7 @@ import { jsonError, requestJson } from "../../../lib/runtime";
 import { requireAdminApi } from "../../../lib/admin";
 
 export async function POST(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const body = await requestJson<{ action?: "open" | "close" }>(request);
   if (body.action !== "open" && body.action !== "close") return jsonError("Door action must be open or close.");

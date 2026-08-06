@@ -5,7 +5,7 @@ import { requireAdminApi } from "../../../lib/admin";
 type PlanPayload = { id?: string; name?: string; description?: string; priceCents?: number; interval?: string; stripePriceId?: string; active?: boolean };
 
 export async function POST(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const body = await requestJson<PlanPayload>(request);
   if (!body.name?.trim() || Number(body.priceCents) < 0) return jsonError("Plan name and price are required.");
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const body = await requestJson<PlanPayload>(request);
   if (!body.id) return jsonError("Plan id is required.");
@@ -28,7 +28,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("Plan id is required.");

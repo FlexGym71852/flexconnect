@@ -169,3 +169,97 @@ select { color: #969eaa; cursor: pointer; }
   .top-actions .primary-button { padding: 0 11px; }.welcome-row, .section-toolbar { align-items: flex-start; flex-direction: column; }.welcome-row > div:last-child { width: 100%; }.welcome-row > div:last-child > * { flex: 1; }.metrics-grid, .plan-grid, .product-grid { grid-template-columns: 1fr; }.metric-card { min-height: 110px; }.form-grid { grid-template-columns: 1fr; }.form-grid .wide { grid-column: auto; }.form-actions { grid-column: auto; }.info-strip { align-items: flex-start; flex-direction: column; gap: 14px; }.filter-row { flex-direction: column; }.search-input { max-width: none; }.modal-backdrop { padding: 8px; }.bar-chart { padding-inline: 13px; gap: 7px; }
   .join-header > div { display: none; }.join-hero { padding-top: 50px; }.join-hero h1 { letter-spacing: -2.5px; }.join-content { padding-inline: 12px; }.join-plans, .join-form-card { padding: 18px; }.public-plan-grid > button { grid-template-columns: 28px 1fr 16px; }.public-price { grid-column: 2; grid-row: 2; }.choice-dot { grid-column: 3; grid-row: 1; }.join-footer p { display: none; }
 }
+
+/* Large, readable type scale */
+.brand-lockup small { font-size: 10px; }
+.nav-label { font-size: 11px; }
+.sidebar nav button { height: 48px; font-size: 15px; }
+.sidebar nav button > span, .sidebar nav button em { font-size: 11px; }
+.avatar { font-size: 12px; }
+.sidebar-foot strong { font-size: 14px; }
+.sidebar-foot small { font-size: 12px; }
+.topbar p, .eyebrow { font-size: 11px; }
+.topbar h1 { font-size: 24px; }
+.sync-state { font-size: 13px; }
+.primary-button, .ghost-button { min-height: 42px; font-size: 13px; }
+.welcome-row h2, .section-toolbar h2 { font-size: clamp(28px, 3vw, 36px); }
+.welcome-row > div > p:last-child, .section-toolbar > div > p:last-child { font-size: 16px; }
+.metric-card { min-height: 148px; }
+.metric-card p { font-size: 14px; }
+.metric-card strong { font-size: 32px; }
+.metric-card small { font-size: 12px; }
+.panel-head h3 { font-size: 18px; }
+.panel-head > span, .panel-head > strong { font-size: 13px; }
+.bar-chart span i, .bar-chart small, .live-label { font-size: 11px; }
+.access-card h3 { font-size: 17px; }
+.access-card p, .empty-state { font-size: 13px; line-height: 1.5; }
+.empty-table { font-size: 14px; }
+table { min-width: 840px; }
+th { height: 46px; font-size: 11px; }
+td { height: 66px; font-size: 14px; }
+.member-cell > span { width: 36px; height: 36px; font-size: 11px; }
+.member-cell strong { font-size: 14px; }
+.member-cell small { font-size: 12px; }
+.status-pill, .text-button { font-size: 12px; }
+.search-input, input, select { min-height: 44px; font-size: 14px; }
+.plan-top > span { font-size: 11px; }
+.plan-card h3 { font-size: 23px; }
+.plan-card > p { font-size: 14px; }
+.plan-price strong { font-size: 30px; }
+.plan-price span, .plan-card dl div { font-size: 13px; }
+.info-strip strong { font-size: 15px; }
+.info-strip span { font-size: 13px; }
+.door-status { font-size: 11px; }
+.door-panel h3 { font-size: 21px; }
+.door-panel > p { font-size: 13px; }
+.mini-avatar { width: 38px; height: 38px; font-size: 11px; }
+.access-list strong { font-size: 14px; }
+.access-list small { font-size: 12px; }
+.pos-layout { grid-template-columns: 1fr 360px; }
+.product-copy > p { font-size: 11px; }
+.product-copy h3 { font-size: 17px; }
+.product-copy > span { font-size: 13px; }
+.product-copy strong { font-size: 18px; }
+.product-copy small, .product-actions .more-button { font-size: 12px; }
+.cart-panel h2 { font-size: 23px; }
+.cart-panel h2 span, .cart-items small, .empty-cart p, .totals label { font-size: 12px; }
+.cart-items strong, .cart-items b, .totals p { font-size: 14px; }
+.empty-cart strong { font-size: 15px; }
+.totals p.grand { font-size: 15px; }
+.totals .grand strong { font-size: 23px; }
+.breakdown strong, .breakdown b { font-size: 14px; }
+.breakdown small { font-size: 12px; }
+.setting-row strong, .device-card-head strong { font-size: 15px; }
+.setting-row p, .device-card-head small, .device-message, .device-card > label, .device-fields label { font-size: 12px; }
+.integration-state { font-size: 12px; }
+.hardware-note { font-size: 12px; }
+.modal { width: min(680px, 100%); }
+.modal h2 { font-size: 23px; }
+.form-grid label { font-size: 13px; }
+.scanner h3 { font-size: 21px; }
+.scanner > p, .scan-result small { font-size: 13px; }
+.scan-ring span, .scan-result strong, .scan-result button { font-size: 13px; }
+.or span { font-size: 10px; }
+.toast { font-size: 14px; }
+.pages-setup-banner { width: 100%; margin-bottom: 17px; padding: 17px 19px; border: 1px solid #493321; border-radius: 10px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; color: #f4f5f7; background: linear-gradient(90deg, rgba(255,99,20,.13), rgba(255,99,20,.035)); text-align: left; cursor: pointer; }
+.pages-setup-banner strong { font-size: 15px; }.pages-setup-banner span { color: #aab0ba; font-size: 13px; }.pages-setup-banner b { color: var(--orange); font-size: 13px; }
+.backend-settings { margin-top: 19px; }.backend-form { padding: 18px; display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 12px; }.backend-form label { display: flex; flex-direction: column; gap: 7px; color: #838b96; font-size: 12px; font-weight: 700; }.backend-form input { width: 100%; }
+.join-header strong { font-size: 16px; }.join-header > div { font-size: 13px; }
+.join-hero > p:first-child, .join-section-head > p { font-size: 11px; }
+.join-hero > p:last-child { font-size: 16px; }
+.join-section-head h2 { font-size: 27px; }
+.plan-number { font-size: 12px; }
+.public-plan-grid h3 { font-size: 21px; }
+.public-plan-grid p, .public-plan-grid li, .public-price span { font-size: 13px; }
+.public-price strong { font-size: 31px; }
+.join-form-card label { font-size: 13px; }
+.selected-summary span, .join-form-card form > small, .join-error, .join-footer { font-size: 11px; }
+.selected-summary strong, .selected-summary b, .join-cta, .join-loading { font-size: 14px; }
+.success-page > p:first-of-type { font-size: 11px; }.success-page > p:last-of-type { font-size: 16px; }
+
+@media (max-width: 820px) {
+  .mobile-nav button, .mobile-nav button span { font-size: 10px; }
+  .backend-form { grid-template-columns: 1fr; }
+  .pages-setup-banner { grid-template-columns: 1fr; }
+  .pos-layout { grid-template-columns: 1fr; }
+}

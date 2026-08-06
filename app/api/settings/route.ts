@@ -5,7 +5,7 @@ import { requireAdminApi } from "../../../lib/admin";
 const allowed = new Set(["tax_rate", "door_unlock_seconds", "deny_past_due"]);
 
 export async function PATCH(request: Request) {
-  const denied = await requireAdminApi(); if (denied) return denied;
+  const denied = await requireAdminApi(request); if (denied) return denied;
   await ensureDatabase();
   const body = await requestJson<Record<string, string | number | boolean>>(request);
   const entries = Object.entries(body).filter(([key]) => allowed.has(key));
